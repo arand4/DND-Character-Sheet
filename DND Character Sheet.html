@@ -1,0 +1,1287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Character Sheet</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght=400;700&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --stone: #3d3933;
+            --accent: #b08d57;
+            --deep: #12110f;
+            --glow: #e6b87d;
+            --success: #4ade80;
+            --failure: #f87171;
+            --temp-green: #a3e635;
+            --temp-dim: #555;
+            --inset: inset 3px 3px 10px rgba(0,0,0,0.8), inset -1px -1px 4px rgba(255,255,255,0.05);
+        }
+
+        body {
+            background-color: #0c0b0a; color: #d1c7b7; font-family: 'Lora', serif;
+            margin: 0; display: flex; justify-content: center; align-items: flex-start; 
+            min-height: 100vh; overflow-y: auto; touch-action: manipulation; padding: 15px 0;
+        }
+
+        .wall {
+            width: 98vw; 
+            min-height: 96vh;
+            background: none;
+            border: 10px solid #221f1c; 
+            display: grid; 
+            grid-template-columns: minmax(200px, 1fr) 340px minmax(200px, 1fr);
+            grid-template-rows: auto auto auto auto 60px;
+            gap: 15px; padding: 20px; box-sizing: border-box;
+        }
+        .wall.theme-default { background: radial-gradient(circle at center, #3d3933 0%, #1a1815 100%); }
+        .wall.theme-brick-tile { background: url('bg.png') repeat; background-size: 220px auto; background-position: center; background-attachment: scroll; }
+
+        .column { display: flex; flex-direction: column; gap: 15px; width: 100%; height: 100%; }
+        .cutout { background: rgba(0,0,0,0.42); box-shadow: var(--inset); border: 1px solid #2a251f; padding: 12px; width: 100%; box-sizing: border-box; }
+        
+        h3 { font-family: 'Cinzel', serif; font-size: 0.85rem; margin: 0 0 10px 0; color: var(--accent); text-align: center; border-bottom: 1px solid #444; letter-spacing: 1px; text-transform: uppercase; font-weight: normal; }
+
+        .page { display: none; width: 100%; height: 100%; grid-column: 1 / span 3; grid-row: 1 / span 4; grid-template-columns: subgrid; grid-template-rows: subgrid; gap: inherit; }
+        .page.active { display: grid; }
+
+        /* CHARACTER FRAME OVERLAY SYSTEM */
+        .character-frame-outer-wrap {
+            width: 320px;
+            height: 400px;
+            position: relative;
+            box-sizing: border-box;
+            flex-shrink: 0;
+        }
+
+        /* Make center column internal fixed-width elements expand to fill the 340px column
+           so the visual horizontal gutter equals the vertical stacked gutter. */
+        .column:nth-child(2) .character-frame-outer-wrap,
+        .column:nth-child(2) .identity-banner,
+        .column:nth-child(2) .core-mechanics-box,
+        .column:nth-child(2) [style*="width: 320px"] {
+            width: 100% !important;
+            max-width: 340px;
+            box-sizing: border-box;
+        }
+
+        .frame-svg-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        .character-frame-inner-wrap {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            clip-path: polygon(10px 50px, 170px 10px, 330px 50px, 330px 390px, 10px 390px);
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        .character-frame-inner-wrap::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: transparent;
+            /* Dual shadows to follow the top-left and top-right faces, plus the left face */
+            box-shadow:
+                inset 20px 25px 12px -10px #000,
+                inset -20px 25px 12px -10px #000,
+                inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+            z-index: 10;
+        }
+
+        .character-frame {
+            width: 100%;
+            height: 100%;
+            background: #0f0e0d;
+            position: relative;
+            z-index: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+
+        .character-frame img {
+            width: 100%; 
+            height: 100%; 
+            object-fit: cover;
+            position: absolute; 
+            z-index: 2;
+        }
+
+        .image-guidance {
+            color: #444; font-family: 'Cinzel', serif; font-size: 0.65rem; padding: 20px; z-index: 10; text-transform: uppercase;
+            position: absolute; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center;
+        }
+        .clear-btn-overlay {
+            position: absolute; z-index: 100; top: 50%; left: 50%; transform: translate(-50%, -50%); display: none;
+        }
+
+        .attack-grid { display: grid; grid-template-columns: 1fr 1px 65px 1px 110px; gap: 6px; margin-bottom: 8px; font-size: 0.95rem; }
+        .attack-grid input { border-bottom: 1px solid #444; font-size: 0.95rem; padding: 4px; width: 100%; box-sizing: border-box; }
+        .divider-v { background-color: #444; width: 1px; height: 100%; }
+
+        .currency-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; font-size: 0.8rem; color: var(--accent); font-family: 'Cinzel'; text-transform: uppercase; }
+        .currency-row input { width: 45px; border-bottom: 1px solid #444; color: #fff; font-size: 0.95rem; }
+
+        .spell-slot-ctrl { display: flex; gap: 10px; font-size: 0.8rem; color: var(--accent); margin-bottom: 6px; text-transform: uppercase; }
+
+        .prof-dot { width: 12px; height: 12px; border: 1px solid var(--accent); border-radius: 50%; cursor: pointer; display: inline-block; margin-right: 6px; flex-shrink: 0; }
+        .prof-dot.filled { background-color: var(--accent); box-shadow: 0 0 8px var(--accent); }
+        
+        .prof-dot.success-dot.filled { background-color: var(--success); box-shadow: 0 0 8px var(--success); border-color: var(--success); }
+        .prof-dot.failure-dot.filled { background-color: var(--failure); box-shadow: 0 0 8px var(--failure); border-color: var(--failure); }
+
+        .death-saves-container { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .death-saves-dots { display: flex; justify-content: center; padding-left: 5px; margin-top: 6px; }
+
+        .hp-label { font-family: 'Cinzel', serif; font-size: 0.65rem; color: var(--accent); text-align: center; margin-bottom: 2px; letter-spacing: 0.5px; text-transform: uppercase; font-weight: 700; }
+        
+        /* Center specific small titles and labels */
+        .cutout h3 { text-align: center; }
+        .cutout .hp-label { text-align: center; width: 100%; }
+        .saves-container > div > div:first-child,
+        .skills-container > div > div:first-child { display: flex; align-items: center; gap: 8px; }
+        .tooltip-wrapper[data-tooltip-type="title"] { display: block; width: 100%; text-align: center; }
+        .has-temp-hp { color: var(--temp-green) !important; }
+        .temp-hp-empty { color: var(--temp-dim) !important; }
+
+        .identity-banner { display: flex; flex-direction: column; gap: 5px; width: 320px; margin-bottom: 4px; }
+        .identity-row { display: flex; gap: 5px; width: 100%; align-items: stretch; }
+        .identity-split-container { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; width: 100%; }
+        .identity-stack { display: flex; flex-direction: column; gap: 5px; }
+        .identity-banner .cutout { display: flex; flex-direction: column; justify-content: center; padding: 6px; }
+        
+        .identity-banner select {
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid #333;
+            color: #fff;
+            font-family: 'Cinzel', serif;
+            font-size: 0.78rem;
+            text-align: center;
+            text-align-last: center;
+            outline: none;
+            width: 100%;
+            cursor: pointer;
+            padding-top: 2px;
+            text-transform: uppercase;
+        }
+        .identity-banner select option {
+            background: #1a1815;
+            color: #fff;
+        }
+
+        .column:nth-child(2) h3 { font-weight: 700; }
+
+        .hit-dice-display { display: flex; align-items: center; padding: 6px 0; width: 100%; }
+        .hit-dice-display > div { 
+            flex: 1; display: flex; flex-direction: column; align-items: center; text-align: center; 
+        }
+        .die-graphic-container { position: relative; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; }
+        .die-graphic-container svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        
+        .die-graphic-container input { position: relative; z-index: 2; width: 35px; font-size: 1.35rem; text-align: center; font-weight: bold; font-family: 'Cinzel', serif; color: #fff; }
+        .hit-dice-selectors select { background: #1a1815; border: 1px solid #444; color: #fff; font-family: 'Cinzel'; font-size: 0.75rem; padding: 4px; outline: none; margin-top: 3px; width: 70px; text-align: center; text-transform: uppercase; }
+
+        .die-graphic-container.shift-d6 input { transform: translateY(1px); }
+        .die-graphic-container.shift-d8 input { transform: translateY(-2px); }
+        .die-graphic-container.shift-d10 input { transform: translateY(-2px); }
+        .die-graphic-container.shift-d12 input { transform: translateY(1px); }
+
+        input, textarea { background: transparent; border: none; color: #fff; font-family: inherit; outline: none; }
+        textarea { resize: none; width: 100%; height: 100%; font-size: 1rem; line-height: 1.3; }
+        .num-input { width: 40px; border-bottom: 1px solid #444; text-align: center; font-size: 0.95rem; }
+        
+        .vert-stat { 
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            text-align: center; 
+            font-size: 0.68rem; 
+            line-height: 1.1;
+            color: var(--accent); 
+            font-family: 'Cinzel';
+            height: 100%;
+            box-sizing: border-box;
+            text-transform: uppercase;
+        }
+        .vert-stat span {
+            display: block;
+            width: 100%;
+            font-weight: 700;
+        }
+        .vert-stat input { 
+            font-size: 1.35rem; 
+            width: 100%; 
+            display: block; 
+            margin: 4px auto 0 auto; 
+            text-align: center; 
+            color: #fff;
+        }
+
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type="number"] {
+            -moz-appearance: textfield;
+        }
+        
+        .btn { background: #2c2925; border: 1px solid var(--accent); color: var(--accent); padding: 8px 15px; cursor: pointer; font-family: 'Cinzel', serif; font-size: 0.75rem; transition: background 0.2s, border-color 0.2s; text-transform: uppercase; white-space: nowrap; }
+        .btn.danger-confirm { background: #5c1d1d !important; border-color: #f87171 !important; color: #fff !important; }
+        .step-btn { background: #2c2925; border: 1px solid var(--accent); color: var(--accent); width: 32px; height: 32px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; }
+
+        .bottom-divider { border-right: 1px solid var(--accent); height: 100%; }
+
+        .skills-container { font-size: 0.9rem; line-height: 1.25; }
+        .saves-container { font-size: 0.9rem; line-height: 1.3; }
+
+        .feature-block { display: flex; flex-direction: column; gap: 4px; background: rgba(0,0,0,0.15); border: 1px solid #2e2a24; padding: 8px; box-sizing: border-box; }
+        .feature-header-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+        .feature-row-container { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 22px; }
+        .feature-dots-container { display: flex; gap: 5px; align-items: center; }
+        .feature-dots-container .prof-dot { margin-right: 0; }
+        .dots-label { font-family: 'Cinzel'; font-size: 0.6rem; color: #555; margin-right: 2px; text-transform: uppercase; }
+        .dot-wrapper { display: flex; align-items: center; }
+        
+        .feature-ctrls { display: flex; gap: 4px; align-items: center; }
+        .feat-step { background: #24211e; border: 1px solid #444; color: var(--accent); width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: bold; cursor: pointer; user-select: none; }
+        .feat-step:hover { background: #332f2a; border-color: var(--accent); }
+
+        /* TOOLTIP STYLES */
+        .tooltip-wrapper { position: relative; display: inline-block; cursor: help; border-bottom: 1px solid transparent; }
+        .tooltip-wrapper:not(.tooltips-disabled) { border-bottom: 1px solid #444; }
+        .tooltip-wrapper.tooltips-disabled { cursor: default; border-bottom: none !important; }
+        .tooltip-text { visibility: hidden; width: 280px; background-color: #1a1815; color: var(--glow); text-align: center; border-radius: 4px; padding: 6px 10px; position: absolute; z-index: 10; bottom: 125%; left: 50%; margin-left: -140px; opacity: 0; transition: opacity 0.3s; font-size: 0.7rem; font-family: 'Cinzel'; border: 2px solid var(--accent); box-shadow: 0 0 10px rgba(0,0,0,0.8); pointer-events: none; line-height: 1.3; max-height: 50px; overflow-y: auto; }
+        .tooltip-text::after { content: ""; position: absolute; top: 100%; left: 50%; margin-left: -5px; border-width: 5px; border-style: solid; border-color: #1a1815 transparent transparent transparent; }
+        .tooltip-wrapper:hover .tooltip-text { visibility: visible; opacity: 1; }
+        .tooltip-wrapper.tooltips-disabled:hover .tooltip-text { visibility: hidden; opacity: 0; }
+        .tooltip-wrapper.tooltips-disabled { cursor: default; }
+        .tooltip-wrapper.tooltips-all .tooltip-text { visibility: visible; opacity: 1; bottom: auto; top: -140px; margin-left: -90px; }
+        .tooltip-wrapper.tooltips-all .tooltip-text::after { top: auto; bottom: -10px; border-color: #1a1815 transparent transparent transparent; }
+        .tooltip-wrapper.tooltips-all { cursor: default; }
+
+        /* ANIMATED 3-WAY TOGGLE SWITCH */
+        .tooltip-toggle { display: flex; align-items: center; gap: 10px; }
+        .toggle-label { font-size: 0.7rem; color: var(--accent); font-family: 'Cinzel'; text-transform: uppercase; }
+        .toggle-switch-container { position: relative; width: 180px; height: 40px; background: #2c2925; border: 1px solid var(--accent); border-radius: 4px; display: flex; align-items: center; padding: 0; box-sizing: border-box; }
+        .toggle-slider { position: absolute; width: 58px; height: 38px; background: var(--accent); border-radius: 2px; top: 1px; left: 1px; transition: left 0.3s ease; box-shadow: 0 0 8px rgba(176, 141, 87, 0.6); z-index: 0; }
+        .toggle-switch-container.mode-off .toggle-slider { left: 1px; }
+        .toggle-switch-container.mode-hover .toggle-slider { left: 61px; }
+        .toggle-switch-container.mode-all .toggle-slider { left: 121px; }
+        .toggle-option { position: relative; flex: 1; text-align: center; cursor: pointer; font-size: 0.7rem; font-family: 'Cinzel'; color: #fff; font-weight: bold; text-transform: uppercase; z-index: 1; user-select: none; transition: color 0.2s; }
+        .toggle-switch-container.mode-off .toggle-option:nth-child(2) { color: #2c2925; }
+        .toggle-switch-container.mode-hover .toggle-option:nth-child(3) { color: #2c2925; }
+        .toggle-switch-container.mode-all .toggle-option:nth-child(4) { color: #2c2925; }
+
+        /* STAGGERED TOOLTIPS IN ALL MODE TO PREVENT OVERLAP */
+        .tooltip-wrapper.tooltips-all .tooltip-text { visibility: visible; opacity: 1; bottom: auto; top: 100%; margin-left: -90px; margin-top: 12px; }
+        .tooltip-wrapper.tooltips-all .tooltip-text::after { top: -10px; bottom: auto; left: 50%; margin-left: -5px; border-color: transparent transparent #1a1815 transparent; }
+        .tooltip-wrapper.tooltips-all .tooltip-text::before { content: ""; position: absolute; left: 50%; top: -10px; width: 1px; height: 10px; background: #1a1815; transform: translateX(-50%); }
+        .tooltip-wrapper.tooltips-all:nth-child(odd) .tooltip-text { margin-top: 12px; }
+        .tooltip-wrapper.tooltips-all:nth-child(even) .tooltip-text { margin-top: 45px; }
+
+        @media (max-width: 800px) {
+            .wall { gap: 8px; padding: 10px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="page-wall" class="wall theme-default">
+    
+    <div id="combat-page" class="page active">
+        <div class="column">
+            <div class="cutout">
+                <h3 class="tooltip-wrapper" data-tooltip-type="title" data-tooltip="Your core abilities. Higher is better.">Attributes</h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="vert-stat">
+                        <span class="tooltip-wrapper" data-tooltip-type="attr" data-attr="strength" data-tooltip="Strength: Physical power and athletic prowess.">STRENGTH</span>
+                        <input type="number" data-id="strength" min="1" max="30">
+                        <input type="text" data-id="strength_buff" class="num-input" style="margin-top:6px; width:40px;" placeholder="+/-">
+                    </div>
+                    <div class="vert-stat">
+                        <span class="tooltip-wrapper" data-tooltip-type="attr" data-attr="dexterity" data-tooltip="Dexterity: Agility, reflexes, and hand-eye coordination.">DEXTERITY</span>
+                        <input type="number" data-id="dexterity" min="1" max="30">
+                        <input type="text" data-id="dexterity_buff" class="num-input" style="margin-top:6px; width:40px;" placeholder="+/-">
+                    </div>
+                    <div class="vert-stat">
+                        <span class="tooltip-wrapper" data-tooltip-type="attr" data-attr="constitution" data-tooltip="Constitution: Health, stamina, and vital force.">CONSTITUTION</span>
+                        <input type="number" data-id="constitution" min="1" max="30">
+                        <input type="text" data-id="constitution_buff" class="num-input" style="margin-top:6px; width:40px;" placeholder="+/-">
+                    </div>
+                    <div class="vert-stat">
+                        <span class="tooltip-wrapper" data-tooltip-type="attr" data-attr="intelligence" data-tooltip="Intelligence: Reasoning, memory, and analysis.">INTELLIGENCE</span>
+                        <input type="number" data-id="intelligence" min="1" max="30">
+                        <input type="text" data-id="intelligence_buff" class="num-input" style="margin-top:6px; width:40px;" placeholder="+/-">
+                    </div>
+                    <div class="vert-stat">
+                        <span class="tooltip-wrapper" data-tooltip-type="attr" data-attr="wisdom" data-tooltip="Wisdom: Awareness, perception, and willpower.">WISDOM</span>
+                        <input type="number" data-id="wisdom" min="1" max="30">
+                        <input type="text" data-id="wisdom_buff" class="num-input" style="margin-top:6px; width:40px;" placeholder="+/-">
+                    </div>
+                    <div class="vert-stat">
+                        <span class="tooltip-wrapper" data-tooltip-type="attr" data-attr="charisma" data-tooltip="Charisma: Force of personality and persuasiveness.">CHARISMA</span>
+                        <input type="number" data-id="charisma" min="1" max="30">
+                        <input type="text" data-id="charisma_buff" class="num-input" style="margin-top:6px; width:40px;" placeholder="+/-">
+                    </div>
+                </div>
+            </div>
+            <div class="cutout">
+                <h3 class="tooltip-wrapper" data-tooltip-type="title" data-tooltip="Defense rolls against harmful effects.">Saving Throws</h3>
+                <div class="saves-container">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:3px;"><div><span class="prof-dot" data-id="p_sv_str"></span> <span class="tooltip-wrapper" data-tooltip="Resist physical strain and poison.">STRENGTH</span></div> <input type="text" data-id="sv_str" class="num-input"></div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:3px;"><div><span class="prof-dot" data-id="p_sv_dex"></span> <span class="tooltip-wrapper" data-tooltip="Evade traps, fireballs, and attacks.">DEXTERITY</span></div> <input type="text" data-id="sv_dex" class="num-input"></div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:3px;"><div><span class="prof-dot" data-id="p_sv_con"></span> <span class="tooltip-wrapper" data-tooltip="Resist disease and exhaustion.">CONSTITUTION</span></div> <input type="text" data-id="sv_con" class="num-input"></div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:3px;"><div><span class="prof-dot" data-id="p_sv_int"></span> <span class="tooltip-wrapper" data-tooltip="Resist illusions and mind control.">INTELLIGENCE</span></div> <input type="text" data-id="sv_int" class="num-input"></div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:3px;"><div><span class="prof-dot" data-id="p_sv_wis"></span> <span class="tooltip-wrapper" data-tooltip="Resist enchantment and possession.">WISDOM</span></div> <input type="text" data-id="sv_wis" class="num-input"></div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:3px;"><div><span class="prof-dot" data-id="p_sv_cha"></span> <span class="tooltip-wrapper" data-tooltip="Resist compulsion and banishment.">CHARISMA</span></div> <input type="text" data-id="sv_cha" class="num-input"></div>
+                </div>
+            </div>
+            
+            <div class="cutout">
+                <h3 class="tooltip-wrapper" data-tooltip-type="title" data-tooltip="Daily dice for healing during short rests.">Hit Dice</h3>
+                <div class="hit-dice-display">
+                    <div style="text-align: center;">
+                        <div class="hp-label tooltip-wrapper" data-tooltip="Maximum Hit Dice you have.">TOTAL DICE</div>
+                        <input type="number" data-id="hd_total" id="hd_total_input" value="1" min="1" max="20" style="width: 45px; text-align: center; font-size: 1.05rem; border-bottom: 1px solid #444; font-family: 'Cinzel'; color: #fff; background: transparent;">
+                    </div>
+                    <div class="die-graphic-container" id="die_container">
+                        <svg id="die_svg" viewBox="0 0 100 100"></svg>
+                        <input type="number" data-id="hd_current" id="hd_current_input" value="1" min="0" max="20" title="Current Available Hit Dice" style="background: transparent;">
+                    </div>
+                    <div class="hit-dice-selectors" style="text-align: center; display: flex; flex-direction: column; align-items: center;">
+                        <div class="hp-label tooltip-wrapper" data-tooltip="Damage die type for healing rolls.">DIE TYPE</div>
+                        <select data-id="hd_type" id="hd_type_select">
+                            <option value="d6">D6</option>
+                            <option value="d8" selected>D8</option>
+                            <option value="d10">D10</option>
+                            <option value="d12">D12</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="cutout" style="flex-grow: 1; display: flex; flex-direction: column; justify-content: space-between; padding-bottom: 20px;">
+                <h3 class="tooltip-wrapper" data-tooltip-type="title" data-tooltip="Saves against death when unconscious.">Death Saves</h3>
+                <div style="display:flex; justify-content:space-around; font-size:0.75rem; flex-grow: 1; align-items: center;">
+                    <div class="death-saves-container">
+                        <div style="letter-spacing: 0.5px; text-align: center; font-family: 'Cinzel'; color: var(--accent); font-size: 0.7rem; font-weight: bold; cursor: help;">SUCCESS</div>
+                        <div class="death-saves-dots">
+                            <span class="prof-dot success-dot" data-id="ds_s1" style="width:14px; height:14px;"></span><span class="prof-dot success-dot" data-id="ds_s2" style="width:14px; height:14px;"></span><span class="prof-dot success-dot" data-id="ds_s3" style="width:14px; height:14px;"></span>
+                        </div>
+                    </div>
+                    <div class="death-saves-container">
+                        <div style="letter-spacing: 0.5px; text-align: center; font-family: 'Cinzel'; color: var(--accent); font-size: 0.7rem; font-weight: bold; cursor: help;">FAILURE</div>
+                        <div class="death-saves-dots">
+                            <span class="prof-dot failure-dot" data-id="ds_f1" style="width:14px; height:14px;"></span><span class="prof-dot failure-dot" data-id="ds_f2" style="width:14px; height:14px;"></span><span class="prof-dot failure-dot" data-id="ds_f3" style="width:14px; height:14px;"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="column" style="align-items: center; justify-content: flex-start; gap: 5px;">
+            <div class="character-frame-outer-wrap">
+                <svg class="frame-svg-overlay" viewBox="0 0 340 400" xmlns="http://www.w3.org/2000/svg">
+                    <g fill="none" stroke="#b08d57" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M170,2 L2,44 L2,398 L170,398" stroke-dasharray="0.5,12,10,12" />
+                        <path d="M170,2 L338,44 L338,398 L170,398" stroke-dasharray="0.5,12,10,12" />
+                    </g>
+                    <polygon points="10,50 170,10 330,50 330,390 10,390" fill="none" stroke="#b08d57" stroke-width="3"/>
+                </svg>
+                <div class="character-frame-inner-wrap">
+                    <div class="character-frame">
+                        <div class="image-guidance" id="image-guidance-text">
+                            PLACE IMAGE IN FOLDER (CHARACTER.JPG)<br>
+                            OR<br>
+                            <input type="file" id="image-upload-input" accept="image/*" style="display: none;">
+                            <button class="btn" onclick="document.getElementById('image-upload-input').click()" style="margin-top: 5px;">UPLOAD IMAGE</button>
+                        </div>
+                        <img src="character.jpg" alt="Character Image" id="character-image" style="cursor: pointer;">
+                        <button class="btn danger-confirm clear-btn-overlay" onclick="clearLocalImage()" id="clear-image-btn">CLEAR IMAGE</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="identity-banner">
+                <div class="identity-row">
+                    <div class="cutout" style="flex: 1;">
+                        <input type="text" data-id="char_name" placeholder="CHARACTER NAME" style="font-family:'Cinzel'; width: 100%; text-align:center; font-size:1.15rem; font-weight: bold; color: #fff; text-transform: uppercase;">
+                    </div>
+                </div>
+                <div class="identity-split-container">
+                    <div class="identity-stack">
+                        <div class="cutout">
+                            <div class="hp-label" style="margin-bottom: 0;">RACE</div>
+                            <select data-id="char_race" id="race_select">
+                                <option value="" disabled selected hidden>-</option>
+                                <option value="Dragonborn">DRAGONBORN</option>
+                                <option value="Dwarf">DWARF</option>
+                                <option value="Elf">ELF</option>
+                                <option value="Gnome">GNOME</option>
+                                <option value="Half-Elf">HALF-ELF</option>
+                                <option value="Half-Orc">HALF-ORC</option>
+                                <option value="Halfling">HALFLING</option>
+                                <option value="Human">HUMAN</option>
+                                <option value="Tiefling">TIEFLING</option>
+                            </select>
+                        </div>
+                        <div class="cutout">
+                            <div class="hp-label" style="margin-bottom: 0;">CLASS</div>
+                            <select data-id="char_class" id="class_select">
+                                <option value="" disabled selected hidden>-</option>
+                                <option value="Barbarian">BARBARIAN</option>
+                                <option value="Bard">BARD</option>
+                                <option value="Cleric">CLERIC</option>
+                                <option value="Druid">DRUID</option>
+                                <option value="Fighter">FIGHTER</option>
+                                <option value="Monk">MONK</option>
+                                <option value="Paladin">PALADIN</option>
+                                <option value="Ranger">RANGER</option>
+                                <option value="Rogue">ROGUE</option>
+                                <option value="Sorcerer">SORCERER</option>
+                                <option value="Warlock">WARLOCK</option>
+                                <option value="Wizard">WIZARD</option>
+                            </select>
+                        </div>
+                        <div class="cutout">
+                            <div class="hp-label" style="margin-bottom: 0;">BACKGROUND</div>
+                            <select data-id="char_background">
+                                <option value="" disabled selected hidden>-</option>
+                                <option value="Acolyte">ACOLYTE</option>
+                                <option value="Charlatan">CHARLATAN</option>
+                                <option value="Criminal">CRIMINAL</option>
+                                <option value="Entertainer">ENTERTAINER</option>
+                                <option value="Folk Hero">FOLK HERO</option>
+                                <option value="Guild Artisan">GUILD ARTISAN</option>
+                                <option value="Hermit">HERMIT</option>
+                                <option value="Noble">NOBLE</option>
+                                <option value="Outlander">OUTLANDER</option>
+                                <option value="Sage">SAGE</option>
+                                <option value="Sailor">SAILOR</option>
+                                <option value="Soldier">SOLDIER</option>
+                                <option value="Urchin">URCHIN</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="identity-stack">
+                        <div class="cutout" style="flex: 1;">
+                            <div class="hp-label" style="margin-bottom: 4px;">LEVEL</div>
+                            <input type="number" data-id="char_level" placeholder="1" min="1" max="20" style="width: 100%; text-align: center; font-size: 1.1rem; font-weight: bold; font-family: 'Cinzel'; border-bottom: 1px solid #333; color: #fff; background: transparent;">
+                        </div>
+                        <div class="cutout" style="flex: 1;">
+                            <div class="hp-label" style="margin-bottom: 4px;">EXPERIENCE POINTS</div>
+                            <input type="text" data-id="char_xp" placeholder="0" style="width: 100%; text-align: center; font-size: 1.1rem; font-family: 'Cinzel'; border-bottom: 1px solid #333; color: #fff;">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 5px; width: 320px;">
+                <div class="cutout"><div class="vert-stat"><span>ARMOR CLASS</span><input type="text" data-id="armor_class"></div></div>
+                <div class="cutout"><div class="vert-stat"><span>INITIATIVE</span><input type="text" data-id="initiative"></div></div>
+                <div class="cutout"><div class="vert-stat"><span>SPEED</span><input type="text" data-id="speed_val"></div></div>
+            </div>
+
+            <div class="cutout core-mechanics-box" style="width: 320px; display: flex; flex-direction: column; gap: 4px;">
+                <h3>Core Mechanics</h3>
+                <div style="display: grid; grid-template-columns: 85px 1px 110px 1px 1fr; align-items: center; text-align: center; gap: 4px;">
+                    <div>
+                        <div class="hp-label" style="font-size:0.58rem; margin-bottom:1px;">PROF BONUS</div>
+                        <input type="text" data-id="prof_bonus" value="+2" style="width: 100%; text-align: center; font-size: 1.1rem; color: #fff; font-family: 'Cinzel'; font-weight: bold;">
+                    </div>
+                    <div class="divider-v" style="height: 24px; background-color: #333;"></div>
+                    <div>
+                        <div class="hp-label" style="font-size:0.58rem; margin-bottom:1px;">PASSIVE PERCEPTION</div>
+                        <input type="text" data-id="passive_perception" value="10" style="width: 100%; text-align: center; font-size: 1.1rem; color: #fff; font-family: 'Cinzel'; font-weight: bold;">
+                    </div>
+                    <div class="divider-v" style="height: 24px; background-color: #333;"></div>
+                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                        <div class="hp-label" style="font-size:0.58rem; margin-bottom:4px;">INSPIRED</div>
+                        <span class="prof-dot success-dot" data-id="sys_inspired" style="width: 14px; height: 14px; margin-right: 0;"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="column">
+            <div class="cutout" style="height: 180px; display: flex; flex-direction: column; justify-content: space-between;">
+                <h3 class="tooltip-wrapper" data-tooltip-type="title" data-tooltip="Your health points. When this reaches 0, you fall unconscious.">Hit Points</h3>
+                <div style="display: flex; flex-direction: column; gap: 12px; padding: 2px 0; flex-grow: 1; justify-content: center;">
+                    <div style="display: flex; justify-content: space-around; align-items: center;">
+                        <div style="display:flex; flex-direction:column; align-items:center;">
+                            <div class="hp-label tooltip-wrapper" data-tooltip="Your maximum health.">MAX HP</div>
+                            <input type="text" data-id="hp_m" value="10" style="width: 55px; text-align: center; font-size: 1.1rem; border-bottom: 1px solid #444;">
+                        </div>
+                        <div style="width: 1px; height: 25px; background-color: #444;"></div>
+                        <div style="display:flex; flex-direction:column; align-items:center;">
+                            <div class="hp-label tooltip-wrapper" data-tooltip="Temporary health that disappears when exceeded.">TEMP HP</div>
+                            <input type="text" data-id="hp_t" id="hp_t_input" value="0" style="width: 55px; text-align: center; font-size: 1.1rem; border-bottom: 1px solid #444;">
+                        </div>
+                    </div>
+                    <div style="border-top: 1px solid #333; padding-top: 10px;">
+                        <div class="hp-label tooltip-wrapper" data-tooltip="Your active health. Max when at full, 0 when unconscious.">CURRENT HP</div>
+                        <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 4px;">
+                            <div class="step-btn" onclick="stepHP(-1)">-</div>
+                            <input type="text" id="hp_display" style="width: 65px; font-size: 1.6rem; text-align: center; font-weight: bold;">
+                            <div class="step-btn" onclick="stepHP(1)">+</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="cutout" style="flex-grow: 1;">
+                <h3 class="tooltip-wrapper" data-tooltip-type="title" data-tooltip="Special proficiencies and training bonuses.">Skills</h3>
+                <div id="skills-list" class="skills-container"></div>
+            </div>
+        </div>
+
+        <div class="cutout" style="grid-column: 1 / span 3; grid-row: 2;">
+            <h3>Summon / Pet</h3>
+            <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; padding: 10px 0;">
+                <div class="vert-stat" style="font-size:0.8rem;"><span>Name</span><input type="text" data-id="summon_name" placeholder="Pet Name"></div>
+                <div class="vert-stat" style="font-size:0.8rem;"><span>Type</span><input type="text" data-id="summon_type" placeholder="Beast / Familiar"></div>
+                <div class="vert-stat" style="font-size:0.8rem;"><span>Hit Points</span><input type="text" data-id="summon_hp"></div>
+                <div class="vert-stat" style="font-size:0.8rem;"><span>Armor Class</span><input type="text" data-id="summon_ac"></div>
+                <div class="vert-stat" style="font-size:0.8rem;"><span>Attack</span><input type="text" data-id="summon_atk"></div>
+                <div class="vert-stat" style="font-size:0.8rem;"><span>Damage</span><input type="text" data-id="summon_dmg"></div>
+            </div>
+            <textarea data-id="summon_notes" placeholder="Summon / pet notes..." style="width: 100%; min-height: 80px; border: none; border-bottom: 1px solid #444; background: transparent; color: #fff; font-family: inherit; resize: none; padding: 8px 0;"></textarea>
+        </div>
+
+        <div class="cutout" style="grid-column: 1 / span 3; grid-row: 3; min-height: 240px;">
+            <div style="display: grid; grid-template-columns: 1.2fr 10px 1fr 10px 1fr; gap: 5px; height: 100%;">
+                <div style="display: flex; flex-direction: column;">
+                    <h3>Attacks & Spellcasting</h3>
+                    <div class="attack-grid">
+                        <div style="font-size:0.65rem; color:var(--accent); font-family: 'Cinzel'; font-weight: 700;">NAME</div><div class="divider-v"></div><div style="font-size:0.65rem; color:var(--accent); font-family: 'Cinzel'; font-weight: 700;">BONUS</div><div class="divider-v"></div><div style="font-size:0.65rem; color:var(--accent); font-family: 'Cinzel'; font-weight: 700;">DAMAGE/TYPE</div>
+                        
+                        <input type="text" data-id="at1_n"><div class="divider-v"></div><input type="text" data-id="at1_b"><div class="divider-v"></div><input type="text" data-id="at1_d">
+                        <input type="text" data-id="at2_n"><div class="divider-v"></div><input type="text" data-id="at2_b"><div class="divider-v"></div><input type="text" data-id="at2_d">
+                        <input type="text" data-id="at3_n"><div class="divider-v"></div><input type="text" data-id="at3_b"><div class="divider-v"></div><input type="text" data-id="at3_d">
+                    </div>
+                    <textarea data-id="attack_notes" style="min-height: 70px; margin-top:5px; padding-top:5px;" placeholder="ATTACK NOTES..."></textarea>
+                </div>
+                <div class="bottom-divider"></div>
+                <div style="display:flex; flex-direction:column;">
+                    <h3>Equipment</h3>
+                    <div style="display:flex; gap:10px; height: 100%;">
+                        <div style="width:75px;">
+                            <div class="currency-row">CP <input type="text" data-id="c_cp"></div>
+                            <div class="currency-row">SP <input type="text" data-id="c_sp"></div>
+                            <div class="currency-row">EP <input type="text" data-id="c_ep"></div>
+                            <div class="currency-row">GP <input type="text" data-id="c_gp"></div>
+                            <div class="currency-row">PP <input type="text" data-id="c_pp"></div>
+                        </div>
+                        <textarea data-id="inv" style="flex-grow:1; border-left:1px solid #444; padding-left:10px; min-height: 130px;"></textarea>
+                    </div>
+                </div>
+                <div class="bottom-divider"></div>
+                <div style="display: flex; flex-direction: column;">
+                    <h3>Traits & Notes</h3>
+                    <textarea data-id="notes" style="flex-grow: 1; min-height: 130px;"></textarea>
+                </div>
+            </div>
+        </div>
+
+        <div class="cutout" style="grid-column: 1 / span 3; grid-row: 4;">
+            <h3>Limited Class & Race Features</h3>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;" id="features-container">
+            </div>
+        </div>
+    </div>
+
+    <div id="spell-page" class="page">
+        <div class="column" style="grid-column: 1 / span 3; padding-bottom:20px;">
+            <div style="display:flex; gap:20px; justify-content:center; margin-bottom:20px;">
+                <div class="cutout"><div class="vert-stat"><span>SPELLCASTING ABILITY</span><input type="text" data-id="spell_ability"></div></div>
+                <div class="cutout"><div class="vert-stat"><span>SPELL SAVE DC</span><input type="text" data-id="spell_dc"></div></div>
+                <div class="cutout"><div class="vert-stat"><span>SPELL ATTACK BONUS</span><input type="text" data-id="spell_atk"></div></div>
+            </div>
+            <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:15px;">
+                <div class="cutout"><h3>Cantrips</h3><textarea data-id="sp_0" style="height:170px;"></textarea></div>
+                <div id="spell-levels-container" style="display:contents;"></div>
+            </div>
+        </div>
+    </div>
+
+    <input type="hidden" data-id="hp_c" value="10">
+
+    <div class="nav-bar" style="grid-column: 1 / span 3; display: flex; justify-content: center; gap: 15px; align-items: center; margin-top: 10px;">
+        <button class="btn" onclick="switchPage('combat-page')">Main Page</button>
+        <button class="btn" onclick="switchPage('spell-page')">Spellbook</button>
+        <div style="width:2px; height:20px; background:#444;"></div>
+        <button class="btn" id="longRestBtn" onclick="triggerLongRest()">Long Rest</button>
+        <div style="width:2px; height:20px; background:#444;"></div>
+        <button class="btn" onclick="backup()">Backup Text</button>
+        <button class="btn" onclick="restore()">Restore Text</button>
+        <button class="btn" id="themeBtn" onclick="cycleTheme()">Theme</button>
+        <div style="width:2px; height:20px; background:#444;"></div>
+        <div class="tooltip-toggle">
+            <span class="toggle-label">TOOLTIPS:</span>
+            <div class="toggle-switch-container mode-off" id="tooltipSwitch">
+                <div class="toggle-slider"></div>
+                <div class="toggle-option" onclick="setTooltipMode('off')">OFF</div>
+                <div class="toggle-option" onclick="setTooltipMode('hover')">HOVER</div>
+                <div class="toggle-option" onclick="setTooltipMode('all')">ALL</div>
+            </div>
+        </div>
+        <div style="width:2px; height:20px; background:#444;"></div>
+        <button class="btn" id="resetBtn" onclick="triggerReset()" style="border-color:#822;">Reset</button>
+    </div>
+</div>
+
+<script>
+    const skills = [
+        { name: "ACROBATICS", attr: "DEX" },
+        { name: "ANIMAL HANDLING", attr: "WIS" },
+        { name: "ARCANA", attr: "INT" },
+        { name: "ATHLETICS", attr: "STR" },
+        { name: "DECEPTION", attr: "CHA" },
+        { name: "HISTORY", attr: "INT" },
+        { name: "INSIGHT", attr: "WIS" },
+        { name: "INTIMIDATION", attr: "CHA" },
+        { name: "INVESTIGATION", attr: "INT" },
+        { name: "MEDICINE", attr: "WIS" },
+        { name: "NATURE", attr: "INT" },
+        { name: "PERCEPTION", attr: "WIS" },
+        { name: "PERFORMANCE", attr: "CHA" },
+        { name: "PERSUASION", attr: "CHA" },
+        { name: "RELIGION", attr: "INT" },
+        { name: "SLEIGHT OF HAND", attr: "DEX" },
+        { name: "STEALTH", attr: "DEX" },
+        { name: "SURVIVAL", attr: "WIS" }
+    ];
+    
+    const skillsList = document.getElementById('skills-list');
+    skills.forEach(s => {
+        const id = s.name.toLowerCase().substring(0,4);
+        skillsList.innerHTML += `<div style="display:flex; justify-content:space-between; margin-bottom:2px;"><div><span class="prof-dot" data-id="p_sk_${id}"></span> ${s.name} <span style="font-size:0.75rem; color:#666; font-family:'Cinzel';">(${s.attr})</span></div> <input type="text" data-id="sk_${id}" class="num-input"></div>`;
+    });
+
+    const spellContainer = document.getElementById('spell-levels-container');
+    for(let i=1; i<=9; i++){
+        spellContainer.innerHTML += `
+            <div class="cutout">
+                <h3>LEVEL ${i}</h3>
+                <div class="spell-slot-ctrl">
+                    SLOTS: <input type="text" data-id="sl_${i}_t" class="num-input" style="width:20px;">
+                    EXPENDED: <input type="text" data-id="sl_${i}_e" class="num-input" style="width:20px;">
+                </div>
+                <textarea data-id="sp_list_${i}" style="height:130px;"></textarea>
+            </div>`;
+    }
+
+    const featureRules = {
+        classes: {
+            Barbarian: { name: "RAGES", slots: 2 },
+            Bard: { name: "BARDIC INSPIRATION", slots: 3 },
+            Cleric: { name: "CHANNEL DIVINITY", slots: 1 },
+            Druid: { name: "WILD SHAPE", slots: 2 },
+            Fighter: { name: "SECOND WIND", slots: 1 },
+            Monk: { name: "KI POINTS", slots: 2 },
+            Paladin: { name: "DIVINE SENSE", slots: 3 },
+            Ranger: { name: "FAVORED ENEMY UTIL", slots: 1 },
+            Rogue: { name: "STROKE OF LUCK", slots: 1 },
+            Sorcerer: { name: "SORCERY POINTS", slots: 2 },
+            Warlock: { name: "MYSTIC ARCANUM", slots: 1 },
+            Wizard: { name: "ARCANE RECOVERY", slots: 1 }
+        },
+        races: {
+            Dragonborn: { name: "BREATH WEAPON", slots: 1 },
+            Dwarf: { name: "STONECUNNING VISION", slots: 1 },
+            Elf: { name: "FEY ANCESTRY BUFF", slots: 1 },
+            Tiefling: { name: "INFERNAL LEGACY", slots: 1 }
+        }
+    };
+
+    function renderFeaturesGrid() {
+        const container = document.getElementById('features-container');
+        container.innerHTML = '';
+
+        const selectedClass = document.getElementById('class_select').value;
+        const selectedRace = document.getElementById('race_select').value;
+
+        const structuralList = [];
+
+        if (selectedClass && featureRules.classes[selectedClass]) {
+            structuralList.push({ ...featureRules.classes[selectedClass], isAuto: true });
+        }
+        if (selectedRace && featureRules.races[selectedRace]) {
+            structuralList.push({ ...featureRules.races[selectedRace], isAuto: true });
+        }
+
+        while (structuralList.length < 4) {
+            structuralList.push({ name: "", slots: 4, isAuto: false });
+        }
+
+        structuralList.forEach((feat, index) => {
+            const idx = index + 1;
+            
+            let allowedSlots = parseInt(localStorage.getItem(`lim_max_${idx}`));
+            if (isNaN(allowedSlots)) {
+                allowedSlots = feat.slots;
+                localStorage.setItem(`lim_max_${idx}`, allowedSlots);
+            }
+
+            let dotsHtml = '';
+            for (let d = 1; d <= 6; d++) {
+                if (d <= allowedSlots) {
+                    dotsHtml += `<div class="dot-wrapper"><span class="prof-dot failure-dot" data-id="lim_use_${idx}_${d}"></span></div>`;
+                } else {
+                    dotsHtml += `<div class="dot-wrapper"><span class="prof-dot failure-dot" data-id="lim_use_${idx}_${d}" style="display: none;"></div>`;
+                }
+            }
+
+            container.innerHTML += `
+                <div class="feature-block">
+                    <div class="feature-header-row">
+                        <input type="text" data-id="lim_name_${idx}" value="${feat.name}" placeholder="CUSTOM FEATURE..." style="border-bottom: 1px solid #444; font-size: 0.82rem; width: 100%; text-transform: uppercase;">
+                    </div>
+                    <div class="feature-row-container">
+                        <div class="feature-dots-container">
+                            <span class="dots-label">USES:</span>
+                            ${dotsHtml}
+                        </div>
+                        <div class="feature-ctrls">
+                            <div class="feat-step" onclick="adjustFeatureMax(${idx}, -1)">-</div>
+                            <div class="feat-step" onclick="adjustFeatureMax(${idx}, 1)">+</div>
+                        </div>
+                    </div>
+                </div>`;
+        });
+
+        document.querySelectorAll('#features-container input').forEach(el => {
+            const savedVal = localStorage.getItem(el.dataset.id);
+            if (savedVal !== null) el.value = savedVal;
+            el.addEventListener('input', () => localStorage.setItem(el.dataset.id, el.value));
+        });
+
+        document.querySelectorAll('#features-container .prof-dot').forEach(dot => {
+            if (localStorage.getItem(dot.dataset.id) === 'true') dot.classList.add('filled');
+        });
+    }
+
+    function adjustFeatureMax(index, delta) {
+        let currentMax = parseInt(localStorage.getItem(`lim_max_${index}`)) || 0;
+        let newMax = currentMax + delta;
+        if (newMax < 0) newMax = 0;
+        if (newMax > 6) newMax = 6;
+        
+        localStorage.setItem(`lim_max_${index}`, newMax);
+        renderFeaturesGrid();
+    }
+
+    document.getElementById('class_select').addEventListener('change', (e) => {
+        localStorage.setItem(e.target.dataset.id, e.target.value);
+        localStorage.removeItem('lim_max_1');
+        localStorage.removeItem('lim_max_2');
+        renderFeaturesGrid();
+    });
+    document.getElementById('race_select').addEventListener('change', (e) => {
+        localStorage.setItem(e.target.dataset.id, e.target.value);
+        localStorage.removeItem('lim_max_1');
+        localStorage.removeItem('lim_max_2');
+        renderFeaturesGrid();
+    });
+
+    function switchPage(id) {
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+    }
+
+    const baseHPEl = document.querySelector('[data-id="hp_c"]');
+    const tempHPEl = document.querySelector('[data-id="hp_t"]');
+    const maxHPEl = document.querySelector('[data-id="hp_m"]');
+    const hpDisplay = document.getElementById('hp_display');
+    const tempHPInput = document.getElementById('hp_t_input');
+
+    function updateHPDisplay() {
+        const base = parseInt(baseHPEl.value) || 0;
+        const temp = parseInt(tempHPEl.value) || 0;
+        
+        if (temp > 0) {
+            hpDisplay.value = base + temp;
+            hpDisplay.classList.add('has-temp-hp');
+            tempHPInput.classList.remove('temp-hp-empty');
+            tempHPInput.classList.add('has-temp-hp');
+        } else {
+            hpDisplay.value = base;
+            hpDisplay.classList.remove('has-temp-hp');
+            tempHPInput.classList.remove('has-temp-hp');
+            tempHPInput.classList.add('temp-hp-empty');
+        }
+    }
+
+    function stepHP(amount) {
+        let base = parseInt(baseHPEl.value) || 0;
+        let temp = parseInt(tempHPEl.value) || 0;
+        const max = parseInt(maxHPEl.value) || 0;
+
+        if (amount < 0) {
+            let damage = Math.abs(amount);
+            if (temp > 0) {
+                if (temp >= damage) {
+                    temp -= damage;
+                    damage = 0;
+                } else {
+                    damage -= temp;
+                    temp = 0;
+                }
+            }
+            if (damage > 0) {
+                base = Math.max(0, base - damage);
+            }
+        } else {
+            base = Math.min(max, base + amount);
+        }
+
+        baseHPEl.value = base;
+        tempHPEl.value = temp;
+        
+        localStorage.setItem('hp_c', base);
+        localStorage.setItem('hp_t', temp);
+        updateHPDisplay();
+    }
+
+    hpDisplay.addEventListener('input', () => {
+        let val = parseInt(hpDisplay.value) || 0;
+        const temp = parseInt(tempHPEl.value) || 0;
+        
+        if (temp > 0) {
+            let calculatedBase = Math.max(0, val - temp);
+            baseHPEl.value = calculatedBase;
+            localStorage.setItem('hp_c', calculatedBase);
+        } else {
+            baseHPEl.value = val;
+            localStorage.setItem('hp_c', val);
+        }
+        updateHPDisplay();
+    });
+
+    const dieSvg = document.getElementById('die_svg');
+    const dieContainer = document.getElementById('die_container');
+    const dieSelect = document.getElementById('hd_type_select');
+    const hdTotalInput = document.getElementById('hd_total_input');
+    const hdCurrentInput = document.getElementById('hd_current_input');
+
+    const dieGeometries = {
+        d6: `<polygon points="15,15 85,15 85,85 15,85" fill="none" stroke="#b08d57" stroke-width="2.5"/>
+             <path d="M15,15 L35,35 M85,15 L65,35 M85,85 L65,65 M15,85 L35,65" stroke="#444" stroke-width="1" stroke-dasharray="2,2"/>
+             <polygon points="35,35 65,35 65,65 35,65" fill="none" stroke="#b08d57" stroke-width="1.5"/>`,
+        
+        d8: `<polygon points="50,5 90,27 90,73 50,95 10,73 10,27" fill="none" stroke="#b08d57" stroke-width="2.5"/>
+             <polygon points="50,5 10,73 90,73" fill="none" stroke="#b08d57" stroke-width="1.5"/>
+             <path d="M10,27 L10,73 M90,27 L90,73 M50,95 L10,73 M50,95 L90,73" stroke="#444" stroke-width="1" stroke-dasharray="2,2"/>`,
+        
+        d10: `<polygon points="50,10 88,40 88,60 50,90 12,60 12,40" fill="none" stroke="#b08d57" stroke-width="2.5"/>
+              <polygon points="50,10 24,60 50,74 76,60" fill="none" stroke="#b08d57" stroke-width="1.8"/>
+              <path d="M12,60 L24,60 M88,60 L76,60 M50,74 L50,90" fill="none" stroke="#b08d57" stroke-width="1.5"/>`,
+        
+        d12: `<polygon points="50,11 73,18 87,40 87,66 73,87 50,95 27,87 13,66 13,40 27,18" fill="none" stroke="#b08d57" stroke-width="2.5"/>
+              <polygon points="50,23 78,44 67,77 33,77 22,44" fill="none" stroke="#b08d57" stroke-width="1.8"/>
+              <path d="M50,11 L50,23 M87,40 L78,44 M73,87 L67,77 M27,87 L33,77 M13,40 L22,44" stroke="#b08d57" stroke-width="1.5"/>`
+    };
+
+    function drawDie() {
+        const type = dieSelect.value;
+        dieSvg.innerHTML = dieGeometries[type] || dieGeometries['d8'];
+        dieContainer.className = "die-graphic-container";
+        dieContainer.classList.add('shift-' + type);
+    }
+
+    dieSelect.addEventListener('change', () => {
+        localStorage.setItem(dieSelect.dataset.id, dieSelect.value);
+        drawDie();
+    });
+
+    hdTotalInput.addEventListener('change', () => {
+        let totalVal = parseInt(hdTotalInput.value) || 1;
+        if (totalVal < 1) totalVal = 1;
+        if (totalVal > 20) totalVal = 20;
+        hdTotalInput.value = totalVal;
+        hdCurrentInput.value = totalVal; 
+        localStorage.setItem(hdTotalInput.dataset.id, totalVal);
+        localStorage.setItem(hdCurrentInput.dataset.id, totalVal);
+    });
+
+    hdCurrentInput.addEventListener('change', () => {
+        const maxLimit = parseInt(hdTotalInput.value) || 1;
+        let currentVal = parseInt(hdCurrentInput.value) || 0;
+        if (currentVal < 0) currentVal = 0;
+        if (currentVal > maxLimit) currentVal = maxLimit; 
+        hdCurrentInput.value = currentVal;
+        localStorage.setItem(hdCurrentInput.dataset.id, currentVal);
+    });
+
+    document.addEventListener('click', e => {
+        if(e.target.classList.contains('prof-dot')) {
+            e.target.classList.toggle('filled');
+            localStorage.setItem(e.target.dataset.id, e.target.classList.contains('filled'));
+        }
+    });
+
+    let restConfirmState = false;
+    function triggerLongRest() {
+        const btn = document.getElementById('longRestBtn');
+        if (!restConfirmState) {
+            restConfirmState = true;
+            btn.textContent = "CONFIRM REST?";
+            btn.classList.add('danger-confirm');
+            setTimeout(() => {
+                restConfirmState = false;
+                btn.textContent = "LONG REST";
+                btn.classList.remove('danger-confirm');
+            }, 4000); 
+        } else {
+            restConfirmState = false;
+            btn.textContent = "LONG REST";
+            btn.classList.remove('danger-confirm');
+            executeLongRestCalculations();
+        }
+    }
+
+    function executeLongRestCalculations() {
+        const maxHP = parseInt(maxHPEl.value) || 10;
+        baseHPEl.value = maxHP;
+        tempHPEl.value = 0; 
+        localStorage.setItem('hp_c', maxHP);
+        localStorage.setItem('hp_t', 0);
+        updateHPDisplay();
+
+        for (let i = 1; i <= 9; i++) {
+            const expendedInput = document.querySelector(`[data-id="sl_${i}_e"]`);
+            if (expendedInput) {
+                expendedInput.value = "0";
+                localStorage.setItem(`sl_${i}_e`, "0");
+            }
+        }
+
+        document.querySelectorAll('#features-container .prof-dot').forEach(dot => {
+            dot.classList.remove('filled');
+            localStorage.setItem(dot.dataset.id, "false");
+        });
+
+        const totalHD = parseInt(hdTotalInput.value) || 1;
+        let currentHD = parseInt(hdCurrentInput.value) || 0;
+        const recoveryAmount = Math.max(1, Math.floor(totalHD / 2));
+        currentHD = Math.min(totalHD, currentHD + recoveryAmount);
+        hdCurrentInput.value = currentHD;
+        localStorage.setItem(hdCurrentInput.dataset.id, currentHD);
+
+        alert("Long Rest processed: HP Maxed, Slots Cleared, Resources Restored, Hit Dice Recovered.");
+    }
+
+    // --- Character Image Upload System ---
+    function loadLocalImage() {
+        const charImg = document.getElementById('character-image');
+        const imgClearBtn = document.getElementById('clear-image-btn');
+        const stored = localStorage.getItem('characterImage');
+        
+        imgClearBtn.style.display = 'none';
+        if (stored) {
+            charImg.src = stored;
+        } else {
+            charImg.src = 'character.jpg';
+        }
+    }
+
+    function clearLocalImage() {
+        localStorage.removeItem('characterImage');
+        loadLocalImage();
+    }
+
+    document.getElementById('character-image').onload = function() {
+        document.getElementById('image-guidance-text').style.display = 'none';
+        this.style.display = 'block';
+    };
+
+    document.getElementById('character-image').onerror = function() {
+        if (!localStorage.getItem('characterImage')) {
+            this.style.display = 'none';
+            document.getElementById('image-guidance-text').style.display = 'flex';
+        }
+    };
+
+    document.getElementById('character-image').addEventListener('dblclick', function() {
+        if (localStorage.getItem('characterImage')) {
+            document.getElementById('clear-image-btn').style.display = 'block';
+        }
+    });
+
+    document.getElementById('image-upload-input').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                localStorage.setItem('characterImage', event.target.result);
+                loadLocalImage();
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    document.querySelectorAll('input[type="number"]').forEach(input => {
+        if (input.id === 'hd_total_input' || input.id === 'hd_current_input') return; 
+        input.addEventListener('change', () => {
+            const min = parseInt(input.min);
+            const max = parseInt(input.max);
+            let val = parseInt(input.value);
+            if (!isNaN(min) && val < min) input.value = min;
+            if (!isNaN(max) && val > max) input.value = max;
+            localStorage.setItem(input.dataset.id, input.value);
+        });
+    });
+
+    const inputs = document.querySelectorAll('input, textarea, select');
+    window.onload = () => {
+        inputs.forEach(el => {
+            const val = localStorage.getItem(el.dataset.id);
+            if (val !== null) el.value = val;
+        });
+        
+        renderFeaturesGrid();
+
+        document.querySelectorAll('.prof-dot').forEach(dot => {
+            if (localStorage.getItem(dot.dataset.id) === 'true') dot.classList.add('filled');
+        });
+        updateHPDisplay();
+        drawDie();
+        applyBackgroundTheme(currentBackgroundTheme);
+        loadLocalImage();
+        updateTooltipSwitch();
+        updateTooltipDisplay();
+    };
+
+    inputs.forEach(el => el.addEventListener('input', () => {
+        if(el.type !== 'number') { 
+            localStorage.setItem(el.dataset.id, el.value);
+        }
+        if (el.dataset.id === 'hp_t' || el.dataset.id === 'hp_m') {
+            updateHPDisplay();
+        }
+        // Update attribute tooltips when values change
+        if (['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'].includes(el.dataset.id)) {
+            updateAttrTooltips();
+        }
+    }));
+
+    function backup() {
+        const data = {};
+        document.querySelectorAll('[data-id]').forEach(el => {
+            if(el.classList.contains('prof-dot')) data[el.dataset.id] = el.classList.contains('filled');
+            else data[el.dataset.id] = el.value;
+        });
+        prompt("Backup Code:", btoa(JSON.stringify(data)));
+    }
+
+    function restore() {
+        const code = prompt("Paste Code:");
+        if (!code) return;
+        try {
+            const data = JSON.parse(atob(code));
+            for (const key in data) {
+                const el = document.querySelector(`[data-id="${key}"]`);
+                if (el) {
+                    if (el.classList.contains('prof-dot')) {
+                        if (data[key]) el.classList.add('filled'); else el.classList.remove('filled');
+                    } else el.value = data[key];
+                    localStorage.setItem(key, data[key]);
+                }
+            }
+            renderFeaturesGrid();
+            updateHPDisplay();
+            drawDie();
+        } catch (e) { alert("Invalid Code"); }
+    }
+
+    /* TOOLTIP SYSTEM */
+    let tooltipMode = localStorage.getItem('tooltipMode') || 'off';
+
+    function setTooltipMode(mode) {
+        tooltipMode = mode;
+        localStorage.setItem('tooltipMode', mode);
+        updateTooltipSwitch();
+        updateTooltipDisplay();
+    }
+
+    function updateTooltipSwitch() {
+        const switchContainer = document.getElementById('tooltipSwitch');
+        switchContainer.className = `toggle-switch-container mode-${tooltipMode}`;
+    }
+
+    const backgroundThemes = [
+        { id: 'default', label: 'Classic', className: 'theme-default' },
+        { id: 'brick-tile', label: 'Brick Tile', className: 'theme-brick-tile' }
+    ];
+    let currentBackgroundTheme = localStorage.getItem('backgroundTheme') || 'default';
+
+    function applyBackgroundTheme(themeId) {
+        const wall = document.getElementById('page-wall');
+        const theme = backgroundThemes.find(t => t.id === themeId) || backgroundThemes[0];
+        wall.classList.remove(...backgroundThemes.map(t => t.className));
+        wall.classList.add(theme.className);
+        currentBackgroundTheme = theme.id;
+        localStorage.setItem('backgroundTheme', theme.id);
+        const themeBtn = document.getElementById('themeBtn');
+        if (themeBtn) themeBtn.textContent = `Theme: ${theme.label}`;
+    }
+
+    function cycleTheme() {
+        const currentIndex = backgroundThemes.findIndex(t => t.id === currentBackgroundTheme);
+        const nextIndex = (currentIndex + 1) % backgroundThemes.length;
+        applyBackgroundTheme(backgroundThemes[nextIndex].id);
+    }
+
+    function updateTooltipDisplay() {
+        document.querySelectorAll('.tooltip-wrapper').forEach(wrapper => {
+            wrapper.classList.remove('tooltips-disabled', 'tooltips-all');
+            if (tooltipMode === 'off') {
+                wrapper.classList.add('tooltips-disabled');
+            } else if (tooltipMode === 'all') {
+                wrapper.classList.add('tooltips-all');
+            }
+            // Add tooltip text if not already there
+            if (!wrapper.querySelector('.tooltip-text')) {
+                let tooltipText = wrapper.dataset.tooltip;
+                if (wrapper.dataset.tooltipType === 'attr' && tooltipMode !== 'off') {
+                    const attrId = wrapper.dataset.attr;
+                    const attrInput = document.querySelector(`[data-id="${attrId}"]`);
+                    const attrVal = attrInput ? parseInt(attrInput.value) || 10 : 10;
+                    const mod = Math.floor((attrVal - 10) / 2);
+                    tooltipText = `${wrapper.dataset.tooltip} Score: ${attrVal}, Modifier: ${mod > 0 ? '+' : ''}${mod}`;
+                }
+                const tooltipEl = document.createElement('div');
+                tooltipEl.className = 'tooltip-text';
+                tooltipEl.textContent = tooltipText;
+                wrapper.appendChild(tooltipEl);
+            }
+        });
+        // When in ALL mode, arrange tooltips to avoid overlap and bias toward page center
+        if (tooltipMode === 'all') {
+            arrangeAllTooltips();
+            window.addEventListener('resize', arrangeAllTooltips);
+            window.addEventListener('scroll', arrangeAllTooltips, { passive: true });
+        } else {
+            window.removeEventListener('resize', arrangeAllTooltips);
+            window.removeEventListener('scroll', arrangeAllTooltips);
+            // revert any fixed positioning applied
+            document.querySelectorAll('.tooltip-wrapper .tooltip-text').forEach(t => {
+                t.style.position = '';
+                t.style.left = '';
+                t.style.top = '';
+                t.style.transform = '';
+                t.style.visibility = '';
+                t.style.opacity = '';
+                t.style.zIndex = '';
+            });
+        }
+    }
+
+    function arrangeAllTooltips() {
+        const wrappers = Array.from(document.querySelectorAll('.tooltip-wrapper.tooltips-all'));
+        if (!wrappers.length) return;
+
+        const pageCenterX = window.innerWidth / 2;
+
+        // Prepare tooltip elements for measurement
+        wrappers.forEach(wrap => {
+            const t = wrap.querySelector('.tooltip-text');
+            if (!t) return;
+            t.style.position = 'fixed';
+            t.style.visibility = 'hidden';
+            t.style.opacity = '0';
+            t.style.left = '0px';
+            t.style.top = '0px';
+            t.style.zIndex = '100';
+        });
+
+        const items = wrappers.map(wrap => {
+            const rect = wrap.getBoundingClientRect();
+            const t = wrap.querySelector('.tooltip-text');
+            const tb = t.getBoundingClientRect();
+            const targetCenterX = rect.left + rect.width / 2;
+            // bias toward center: place tooltip halfway between element and page center
+            const desiredX = Math.round(((targetCenterX + pageCenterX) / 2) - (tb.width / 2));
+            let desiredY = Math.round(rect.bottom + 12); // below the element
+            return { wrap, t, rect, tb, desiredX, desiredY, width: tb.width, height: tb.height };
+        });
+
+        // Sort by desiredY and adjust to avoid vertical overlap
+        items.sort((a, b) => a.desiredY - b.desiredY);
+        let lastBottom = 8; // margin from top
+        items.forEach((it, idx) => {
+            let top = Math.max(it.desiredY, lastBottom);
+            // ensure tooltip stays within viewport vertically
+            if (top + it.height > window.innerHeight - 8) {
+                top = window.innerHeight - it.height - 8;
+            }
+            // ensure tooltip stays within viewport horizontally
+            let left = it.desiredX;
+            if (left < 8) left = 8;
+            if (left + it.width > window.innerWidth - 8) left = window.innerWidth - it.width - 8;
+
+            it.t.style.left = left + 'px';
+            it.t.style.top = top + 'px';
+            it.t.style.visibility = 'visible';
+            it.t.style.opacity = '1';
+            it.t.style.zIndex = (200 + idx).toString();
+
+            lastBottom = top + it.height + 8;
+        });
+    }
+
+    function updateAttrTooltips() {
+        document.querySelectorAll('.tooltip-wrapper[data-tooltip-type="attr"]').forEach(wrapper => {
+            const tooltipEl = wrapper.querySelector('.tooltip-text');
+            if (tooltipEl) {
+                const attrId = wrapper.dataset.attr;
+                const attrInput = document.querySelector(`[data-id="${attrId}"]`);
+                const attrVal = attrInput ? parseInt(attrInput.value) || 10 : 10;
+                const mod = Math.floor((attrVal - 10) / 2);
+                tooltipEl.textContent = `${wrapper.dataset.tooltip} Score: ${attrVal}, Modifier: ${mod > 0 ? '+' : ''}${mod}`;
+            }
+        });
+    }
+
+    /* RESET BUTTON DOUBLE CONFIRMATION */
+    let resetConfirmState = false;
+    function triggerReset() {
+        const btn = document.getElementById('resetBtn');
+        if (!resetConfirmState) {
+            resetConfirmState = true;
+            btn.textContent = "CONFIRM RESET?";
+            btn.classList.add('danger-confirm');
+            setTimeout(() => {
+                resetConfirmState = false;
+                btn.textContent = "Reset";
+                btn.classList.remove('danger-confirm');
+            }, 4000);
+        } else {
+            resetConfirmState = false;
+            btn.textContent = "Reset";
+            btn.classList.remove('danger-confirm');
+            localStorage.clear();
+            location.reload();
+        }
+    }
+</script>
+</body>
+</html>
