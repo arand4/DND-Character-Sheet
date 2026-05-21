@@ -1,3 +1,6 @@
+<img width="2778" height="1940" alt="image" src="https://github.com/user-attachments/assets/cbcb8a8a-30e1-4b55-8b1a-599a514b82cd" />
+
+
 # D&D Character Sheet Web-App
 
 Welcome to my little project. 
@@ -11,6 +14,9 @@ This is a DND character sheet web-app that automatically saves any changes you e
 
 ## How it Works
 The app is built entirely with HTML, CSS, and Vanilla JavaScript. It requires no server or database. Because it uses `localStorage`, your data is unique to the browser and device you use to open the file.
+
+## Tablet & Web-App Use
+This project is designed to work smoothly on tablets. For the best experience, it is recommended to save the page to your device's springboard as a web-app. On iPad, this **must** be done using **Safari** if you don't want web browser UI elements (tap the Share icon and select **"Add to Home Screen"**); Android requirements may vary depending on the browser and device used and I have no android tablet to test this.
 
 ## Manually Saving and Restoring Data
 If you want to move your character to a different device, or a different browser (e.g., from Chrome to Firefox), you can use the built-in Backup system:
